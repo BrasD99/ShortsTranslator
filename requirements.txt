@@ -23,4 +23,4 @@ torch==2.1.0
 torchaudio==2.1.0
 tqdm==4.64.1
 transformers==4.31.0
-TTS==0.20.3
+TTS==0.21.1

@@ -10,7 +10,7 @@ def process(video_uri, language):
     update_progress(0, 'Downloading video from YouTube')
     yt = YouTube(video_uri)
     yt.streams.filter(progressive=True, file_extension='mp4').order_by('resolution').first().download(filename='temp.mp4')
-    engine = Engine(language, update_progress)
+    engine = Engine(language, 3, update_progress)
     engine.process('temp.mp4', 'out.mp4')
     update_progress(100, 'Done!')
 

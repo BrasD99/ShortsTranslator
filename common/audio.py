@@ -7,6 +7,9 @@ from pydub.silence import split_on_silence
 from audiostretchy.stretch import stretch_audio
 from common.files_manager import FilesManager
 
+import concurrent.futures
+import numpy as np
+
 def split_on_silence2(audio_segment, min_silence_len=1000, silence_thresh=-16, keep_silence=100,
                      seek_step=1):
     def pairwise(iterable):
@@ -40,7 +43,9 @@ def split_on_silence2(audio_segment, min_silence_len=1000, silence_thresh=-16, k
         for start, end in output_ranges
     ]
 
-def speedup_audio(cloner, dst_text, dst_audio_filename):
+def speedup_audio(cloner, dst_text, dst_audio_filename, attempts_num=3):
+    if attempts_num <= 0:
+        attempts_num = 3
     dst = AudioSegment.from_file(dst_audio_filename)
     dst_duration = dst.duration_seconds
 
@@ -56,6 +61,30 @@ def speedup_audio(cloner, dst_text, dst_audio_filename):
     # Считаем отношение между длительностями
     speed = non_speed_voice_duration / dst_duration
 
+    def process_audio(speed):
+        cloned_wav = cloner.process(
+            speaker_wav_filename=dst_audio_filename,
+            text=dst_text,
+            speed=speed
+        )
+        speed_voice = AudioSegment.from_file(cloned_wav)
+        speed_voice_duration = speed_voice.duration_seconds
+        return {'speed_voice_duration': speed_voice_duration, 'cloned_wav': cloned_wav}
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=attempts_num) as executor:
+        # Submit the tasks for processing
+        futures = [executor.submit(process_audio, speed) for speed in [speed] * attempts_num]
+
+        # Retrieve the results as they become available
+        results = [future.result() for future in concurrent.futures.as_completed(futures)]
+    
+    min_duration_element = min(results, key=lambda x: np.abs(x['speed_voice_duration'] - dst_duration))
+    speed_voice_duration = min_duration_element['speed_voice_duration']
+    cloned_wav = min_duration_element['cloned_wav']
+
+    print(f'Original duration: {dst_duration}, cloned duration: {speed_voice_duration}')
+
+    '''
     # Клонируем снова, но с нужной скоростью!
     cloned_wav = cloner.process(
         speaker_wav_filename=dst_audio_filename,
@@ -64,6 +93,7 @@ def speedup_audio(cloner, dst_text, dst_audio_filename):
     )
     speed_voice = AudioSegment.from_file(cloned_wav)
     speed_voice_duration = speed_voice.duration_seconds
+    '''
 
     # Считаем ratio для финального ускорения (возможно шаг не нужен вовсе)
     ratio = dst_duration / speed_voice_duration
